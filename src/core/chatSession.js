@@ -292,6 +292,9 @@ var setFeatureFlag = feature => {
 var ChatSessionConstructor = args => {
     var options = args.options || {};
     var type = args.type || SESSION_TYPES.AGENT;
+    if (args.accessTokenProvider) {
+        options = { ...options, accessTokenProvider: args.accessTokenProvider };
+    }
     GlobalConfig.updateStageRegionCell(options);
     // initialize CSM Service for only customer chat widget
     // Disable CSM service from canary test

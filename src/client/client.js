@@ -35,22 +35,22 @@ class ChatClientFactoryImpl {
   getCachedClient(optionsInput, logMetaData) {
     let region = GlobalConfig.getRegionOverride() || optionsInput.region || GlobalConfig.getRegion() || REGIONS.pdx;
     logMetaData.region = region;
-    // CustomChatClient is stateless (plain fetch, no SDK init cost) — always create fresh
-    // so each session captures its own tokenProvider at construction time.
-    if (GlobalConfig.getAccessTokenProvider()) {
-      return this._createAwsClient(region, logMetaData);
+    const tokenProvider = optionsInput.accessTokenProvider;
+    if (tokenProvider) {
+      // CustomChatClient is stateless — always create fresh so each session
+      // holds its own tokenProvider and is fully isolated.
+      return this._createAwsClient(region, logMetaData, tokenProvider);
     }
     if (this.clientCache[region]) {
       return this.clientCache[region];
     }
-    let client = this._createAwsClient(region, logMetaData);
+    let client = this._createAwsClient(region, logMetaData, null);
     this.clientCache[region] = client;
     return client;
   }
 
-  _createAwsClient(region, logMetaData) {
+  _createAwsClient(region, logMetaData, tokenProvider) {
     let endpointOverride = GlobalConfig.getEndpointOverride();
-    const tokenProvider = GlobalConfig.getAccessTokenProvider();
     if (tokenProvider) {
       return new CustomChatClient({
         endpoint: endpointOverride,
