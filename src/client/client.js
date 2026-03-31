@@ -636,4 +636,4 @@ class CustomChatClient extends ChatClient {
 }
 
 let ChatClientFactory = new ChatClientFactoryImpl();
-export { ChatClientFactory };
+export { ChatClientFactory, ChatClient };

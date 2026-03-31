@@ -1,5 +1,6 @@
 /*eslint no-unused-vars: "off"*/
 import { ChatSessionObject } from "./core/chatSession";
+import { ChatClient } from "./client/client";
 import { LogManager, LogLevel } from "./log";
 import { metadata } from "./metadata";
 
@@ -18,6 +19,8 @@ connect.LogManager = connect.LogManager || LogManager;
 connect.LogLevel = connect.LogLevel || LogLevel;
 connect.csmService = connect.csmService || ChatSessionObject.csmService;
 export const ChatSession = ChatSessionObject;
+export { ChatClient };
+connect.ChatClient = connect.ChatClient || ChatClient;
 
 // Expose READ-ONLY global window.connect.ChatJS.version
 global.connect.ChatJS = metadata;

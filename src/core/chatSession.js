@@ -61,7 +61,7 @@ class PersistentConnectionAndChatServiceSessionFactory extends ChatSessionFactor
                 sessionType,
             };
 
-            var chatClient = ChatClientFactory.getCachedClient(options, logMetaData);
+            var chatClient = options.chatClient || ChatClientFactory.getCachedClient(options, logMetaData);
 
             var args = {
                 sessionType: sessionType,
@@ -294,6 +294,9 @@ var ChatSessionConstructor = args => {
     var type = args.type || SESSION_TYPES.AGENT;
     if (args.accessTokenProvider) {
         options = { ...options, accessTokenProvider: args.accessTokenProvider };
+    }
+    if (args.chatClient) {
+        options = { ...options, chatClient: args.chatClient };
     }
     GlobalConfig.updateStageRegionCell(options);
     // initialize CSM Service for only customer chat widget
