@@ -35,6 +35,11 @@ class ChatClientFactoryImpl {
   getCachedClient(optionsInput, logMetaData) {
     let region = GlobalConfig.getRegionOverride() || optionsInput.region || GlobalConfig.getRegion() || REGIONS.pdx;
     logMetaData.region = region;
+    // CustomChatClient is stateless (plain fetch, no SDK init cost) — always create fresh
+    // so each session captures its own tokenProvider at construction time.
+    if (GlobalConfig.getAccessTokenProvider()) {
+      return this._createAwsClient(region, logMetaData);
+    }
     if (this.clientCache[region]) {
       return this.clientCache[region];
     }
@@ -45,6 +50,14 @@ class ChatClientFactoryImpl {
 
   _createAwsClient(region, logMetaData) {
     let endpointOverride = GlobalConfig.getEndpointOverride();
+    const tokenProvider = GlobalConfig.getAccessTokenProvider();
+    if (tokenProvider) {
+      return new CustomChatClient({
+        endpoint: endpointOverride,
+        tokenProvider,
+        logMetaData,
+      });
+    }
     let endpointUrl = `https://participant.connect.${region}.amazonaws.com`;
     if (endpointOverride) {
       endpointUrl = endpointOverride;
@@ -389,6 +402,235 @@ class AWSChatClient extends ChatClient {
           statusCode: error.$metadata ? error.$metadata.httpStatusCode : undefined,
         };
         return Promise.reject(errObj);
+      });
+  }
+}
+
+class CustomChatClient extends ChatClient {
+  constructor(args) {
+    super();
+    this.endpoint = args.endpoint;
+    this.tokenProvider = args.tokenProvider;
+    this.logger = LogManager.getLogger({ prefix: DEFAULT_PREFIX, logMetaData: args.logMetaData });
+  }
+
+  async _request(path, body, connectionToken) {
+    const accessToken = await this.tokenProvider();
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+      "X-Amz-Bearer": connectionToken,
+    };
+    const response = await fetch(`${this.endpoint}${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => "");
+      const err = {
+        type: "CustomChatClientError",
+        message: errBody || response.statusText,
+        statusCode: response.status,
+      };
+      return Promise.reject(err);
+    }
+    const data = await response.json().catch(() => ({}));
+    return { data };
+  }
+
+  createParticipantConnection(participantToken, type, acknowledgeConnection) {
+    return this._request(
+      "/participant/connection",
+      { Type: type, ConnectParticipant: acknowledgeConnection },
+      participantToken
+    )
+      .then((res) => {
+        this.logger.info("Successfully create connection request")?.sendInternalLogToServer?.();
+        return res;
+      })
+      .catch((err) => {
+        this.logger.error("Error when creating connection request", err)?.sendInternalLogToServer?.();
+        return Promise.reject(err);
+      });
+  }
+
+  disconnectParticipant(connectionToken) {
+    return this._request("/participant/disconnect", {}, connectionToken)
+      .then((res) => {
+        this.logger.info("Successfully disconnect participant")?.sendInternalLogToServer?.();
+        return res;
+      })
+      .catch((err) => {
+        this.logger.error("Error when disconnecting participant", err)?.sendInternalLogToServer?.();
+        return Promise.reject(err);
+      });
+  }
+
+  sendMessage(connectionToken, content, contentType, clientToken) {
+    const body = { Content: content, ContentType: contentType };
+    if (clientToken) {
+      body.ClientToken = clientToken;
+    }
+    return this._request("/participant/message", body, connectionToken)
+      .then((res) => {
+        this.logger.debug("Successfully send message", { id: res.data?.Id, contentType })?.sendInternalLogToServer?.();
+        return res;
+      })
+      .catch((err) => {
+        this.logger.error("Send message error", err, { contentType });
+        return Promise.reject(err);
+      });
+  }
+
+  sendEvent(connectionToken, contentType, content, clientToken) {
+    if (contentType === CONTENT_TYPE.typing) {
+      return this.throttleEvent(connectionToken, contentType, content, clientToken);
+    }
+    return this._submitEvent(connectionToken, contentType, content, clientToken);
+  }
+
+  throttleEvent = throttle((connectionToken, contentType, content, clientToken) => {
+    return this._submitEvent(connectionToken, contentType, content, clientToken);
+  }, TYPING_VALIDITY_TIME, { trailing: false, leading: true });
+
+  _submitEvent(connectionToken, contentType, content, clientToken) {
+    const body = { ContentType: contentType, Content: content };
+    if (clientToken) {
+      body.ClientToken = clientToken;
+    }
+    return this._request("/participant/event", body, connectionToken)
+      .then((res) => {
+        this.logger.debug("Successfully send event", { contentType, id: res.data?.Id });
+        return res;
+      })
+      .catch((err) => {
+        return Promise.reject(err);
+      });
+  }
+
+  getTranscript(connectionToken, args) {
+    const body = {
+      MaxResults: args.maxResults,
+      NextToken: args.nextToken,
+      ScanDirection: args.scanDirection,
+      SortOrder: args.sortOrder,
+      StartPosition: {
+        Id: args.startPosition.id,
+        AbsoluteTime: args.startPosition.absoluteTime,
+        MostRecent: args.startPosition.mostRecent,
+      },
+    };
+    if (args.contactId) {
+      body.ContactId = args.contactId;
+    }
+    return this._request("/participant/transcript", body, connectionToken)
+      .then((res) => {
+        this.logger.info("Successfully get transcript");
+        return res;
+      })
+      .catch((err) => {
+        this.logger.error("Get transcript error", err);
+        return Promise.reject(err);
+      });
+  }
+
+  sendAttachment(connectionToken, attachment) {
+    const startBody = {
+      ContentType: attachment.type,
+      AttachmentName: attachment.name,
+      AttachmentSizeInBytes: attachment.size,
+    };
+    const logContent = { contentType: attachment.type, size: attachment.size };
+    return this._request("/participant/attachment", startBody, connectionToken)
+      .then((startRes) => {
+        const { UploadMetadata, AttachmentId } = startRes.data;
+        return fetch(UploadMetadata.Url, {
+          method: "PUT",
+          headers: UploadMetadata.HeadersToInclude,
+          body: attachment,
+        }).then(() => {
+          this.logger.debug("Successfully upload attachment", { ...logContent, attachmentId: AttachmentId });
+          return this._request(
+            "/participant/attachment/complete",
+            { AttachmentIds: [AttachmentId] },
+            connectionToken
+          );
+        });
+      })
+      .catch((err) => {
+        this.logger.error("Upload attachment error", err, logContent);
+        return Promise.reject(err);
+      });
+  }
+
+  downloadAttachment(connectionToken, attachmentId) {
+    const logContent = { attachmentId };
+    return this._request("/participant/attachment/get", { AttachmentId: attachmentId }, connectionToken)
+      .then((response) => {
+        this.logger.debug("Successfully download attachment", logContent);
+        return fetch(response.data.Url).then((t) => t.blob());
+      })
+      .catch((err) => {
+        this.logger.error("Download attachment error", err, logContent);
+        return Promise.reject(err);
+      });
+  }
+
+  getAttachmentURL(connectionToken, attachmentId) {
+    const logContent = { attachmentId };
+    return this._request("/participant/attachment/get", { AttachmentId: attachmentId }, connectionToken)
+      .then((response) => {
+        this.logger.debug("Successfully get attachment URL", logContent);
+        return response.data.Url;
+      })
+      .catch((err) => {
+        this.logger.error("Get attachment URL error", err, logContent);
+        return Promise.reject(err);
+      });
+  }
+
+  describeView(viewToken, connectionToken) {
+    return this._request("/participant/view", { ViewToken: viewToken }, connectionToken)
+      .then((res) => {
+        this.logger.info("Successful describe view request")?.sendInternalLogToServer?.();
+        return res;
+      })
+      .catch((err) => {
+        this.logger.error("describeView gave an error response", err)?.sendInternalLogToServer?.();
+        return Promise.reject(err);
+      });
+  }
+
+  getAuthenticationUrl(connectionToken, redirectUri, sessionId) {
+    return this._request(
+      "/participant/authentication/url",
+      { RedirectUri: redirectUri, SessionId: sessionId },
+      connectionToken
+    )
+      .then((res) => {
+        this.logger.info("Successful getAuthenticationUrl request")?.sendInternalLogToServer?.();
+        return res;
+      })
+      .catch((err) => {
+        this.logger.error("getAuthenticationUrl gave an error response", err)?.sendInternalLogToServer?.();
+        return Promise.reject(err);
+      });
+  }
+
+  cancelParticipantAuthentication(connectionToken, sessionId) {
+    return this._request(
+      "/participant/authentication/cancel",
+      { SessionId: sessionId },
+      connectionToken
+    )
+      .then((res) => {
+        this.logger.info("Successful cancelParticipantAuthentication request")?.sendInternalLogToServer?.();
+        return res;
+      })
+      .catch((err) => {
+        this.logger.error("cancelParticipantAuthentication gave an error response", err)?.sendInternalLogToServer?.();
+        return Promise.reject(err);
       });
   }
 }

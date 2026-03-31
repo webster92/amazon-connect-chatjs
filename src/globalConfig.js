@@ -51,6 +51,9 @@ class GlobalConfigImpl {
         const features = Array.isArray(config.features) ? config.features : this.features.values;
         this.features["values"] = Array.isArray(features) ? [...features] : new Array();
         this.customUserAgentSuffix = config.customUserAgentSuffix || this.customUserAgentSuffix;
+        if (config.accessTokenProvider !== undefined) {
+            this.accessTokenProvider = config.accessTokenProvider;
+        }
     }
 
     updateStageRegionCell(config) {
@@ -95,6 +98,10 @@ class GlobalConfigImpl {
 
     getEndpointOverride() {
         return this.endpointOverride;
+    }
+
+    getAccessTokenProvider() {
+        return this.accessTokenProvider;
     }
 
     removeFeatureFlag(feature) {
