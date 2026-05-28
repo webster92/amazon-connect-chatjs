@@ -14,6 +14,10 @@ jest.mock("./log", () => ({
     LogManager,
     LogLevel,
 }));
+jest.mock("./client/client", () => ({
+    ChatClientFactory: {},
+    ChatClient: class ChatClient {},
+}));
 
 describe("Chat JS index file", () => {
     test("ChatSession should equal ChatSessionObject", () => {

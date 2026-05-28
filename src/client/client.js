@@ -60,40 +60,48 @@ class ChatClientFactoryImpl {
 
 /*eslint-disable*/
 class ChatClient {
-  sendMessage(participantToken, message, type) {
-    throw new UnImplementedMethodException("sendTextMessage in ChatClient");
-  }
-
-  sendAttachment(participantToken, attachment, metadata) {
-    throw new UnImplementedMethodException("sendAttachment in ChatClient");
-  }
-
-  downloadAttachment(participantToken, attachmentId) {
-    throw new UnImplementedMethodException("downloadAttachment in ChatClient");
-  }
-
-  disconnectParticipant(participantToken) {
-    throw new UnImplementedMethodException("disconnectParticipant in ChatClient");
-  }
-
-  sendEvent(connectionToken, contentType, content) {
-    throw new UnImplementedMethodException("sendEvent in ChatClient");
-  }
-
-  createParticipantConnection(participantToken, type) {
+  createParticipantConnection(participantToken, type, acknowledgeConnection) {
     throw new UnImplementedMethodException("createParticipantConnection in ChatClient");
   }
 
-  describeView() {
-    throw new UnImplementedMethodException("describeView in ChatClient");
+  sendMessage(connectionToken, content, contentType, clientToken) {
+    throw new UnImplementedMethodException("sendMessage in ChatClient");
   }
 
-  getAuthenticationUrl() {
+  getTranscript(connectionToken, args) {
+    throw new UnImplementedMethodException("getTranscript in ChatClient");
+  }
+
+  sendEvent(connectionToken, contentType, content, clientToken) {
+    throw new UnImplementedMethodException("sendEvent in ChatClient");
+  }
+
+  sendAttachment(connectionToken, attachment, metadata) {
+    throw new UnImplementedMethodException("sendAttachment in ChatClient");
+  }
+
+  downloadAttachment(connectionToken, attachmentId) {
+    throw new UnImplementedMethodException("downloadAttachment in ChatClient");
+  }
+
+  getAttachmentURL(connectionToken, attachmentId) {
+    throw new UnImplementedMethodException("getAttachmentURL in ChatClient");
+  }
+
+  disconnectParticipant(connectionToken) {
+    throw new UnImplementedMethodException("disconnectParticipant in ChatClient");
+  }
+
+  getAuthenticationUrl(connectionToken, redirectUri, sessionId) {
     throw new UnImplementedMethodException("getAuthenticationUrl in ChatClient");
   }
 
-  cancelParticipantAuthentication() {
+  cancelParticipantAuthentication(connectionToken, sessionId) {
     throw new UnImplementedMethodException("cancelParticipantAuthentication in ChatClient");
+  }
+
+  describeView(viewToken, connectionToken) {
+    throw new UnImplementedMethodException("describeView in ChatClient");
   }
 }
 /*eslint-enable*/
@@ -394,4 +402,4 @@ class AWSChatClient extends ChatClient {
 }
 
 let ChatClientFactory = new ChatClientFactoryImpl();
-export { ChatClientFactory };
+export { ChatClientFactory, ChatClient };

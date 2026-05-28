@@ -84,6 +84,82 @@ declare namespace connect {
     readonly region?: string;
   }
 
+  /**
+   * Base class for custom Participant Service client implementations.
+   * Extend this class to route all Participant Service calls through your own
+   * service layer instead of directly to the AWS Connect Participant Service.
+   *
+   * Each method receives the same arguments the SDK would pass to the default
+   * AWS client and must return a Promise resolving to `{ data: <ResponseShape> }`.
+   * Your implementation has full control over the HTTP request made and is
+   * responsible for mapping the response back to the expected shape.
+   */
+  interface ParticipantServiceClient {
+    createParticipantConnection(
+      participantToken: string,
+      type: string[] | null,
+      acknowledgeConnection: boolean | null
+    ): Promise<{ data: {
+      Websocket: { Url: string; ConnectionExpiry: string };
+      ConnectionCredentials: { ConnectionToken: string; Expiry: string };
+    }}>;
+
+    sendMessage(
+      connectionToken: string,
+      content: string,
+      contentType: string,
+      clientToken?: string
+    ): Promise<{ data: SendMessageResult }>;
+
+    getTranscript(
+      connectionToken: string,
+      args: GetTranscriptArgs
+    ): Promise<{ data: GetTranscriptResult }>;
+
+    sendEvent(
+      connectionToken: string,
+      contentType: string,
+      content: string | null,
+      clientToken?: string
+    ): Promise<{ data: SendEventResult }>;
+
+    sendAttachment(
+      connectionToken: string,
+      attachment: File,
+      metadata?: unknown
+    ): Promise<{ data: unknown }>;
+
+    downloadAttachment(
+      connectionToken: string,
+      attachmentId: string
+    ): Promise<Blob>;
+
+    getAttachmentURL(
+      connectionToken: string,
+      attachmentId: string
+    ): Promise<string>;
+
+    disconnectParticipant(
+      connectionToken: string
+    ): Promise<{ data: unknown }>;
+
+    getAuthenticationUrl(
+      connectionToken: string,
+      redirectUri: string,
+      sessionId: string
+    ): Promise<{ data: GetAuthenticationUrlResult }>;
+
+    cancelParticipantAuthentication(
+      connectionToken: string,
+      sessionId: string
+    ): Promise<{ data: unknown }>;
+
+    describeView(
+      viewToken: string,
+      connectionToken: string
+    ): Promise<{ data: DescribeViewResult }>;
+  }
+
   interface ChatSessionArgs {
     /** The details of the chat. */
     readonly chatDetails: ChatDetailsInput;
@@ -93,6 +169,13 @@ declare namespace connect {
 
     /** The session type. */
     readonly type: ChatSessionTypes[keyof ChatSessionTypes];
+
+    /**
+     * Optional custom client implementation. When provided, all Participant
+     * Service calls are routed through this client instead of the default
+     * AWS SDK client. The default client behaviour is preserved when omitted.
+     */
+    readonly customClient?: ParticipantServiceClient;
   }
 
   interface CustomerChatSessionArgs extends ChatSessionArgs {
@@ -386,6 +469,21 @@ declare namespace connect {
     describeView<T>(
       args: WithMetadata<DescribeViewArgs, T>
     ): Promise<WithMetadata<ParticipantServiceResponse<DescribeViewResult>, T>>;
+
+    /**
+     * Closes the WebSocket transport without disconnecting the participant
+     * from the Contact. Use this to cleanly terminate the client-side
+     * connection on logout while keeping the server-side Contact open.
+     */
+    closeWebSocket(): void;
+
+    /**
+     * Fully destroys the session and all associated client-side state
+     * (WebSocket, token polling, event subscriptions). Call this when
+     * discarding a session so the next `create()` call starts clean.
+     * Does NOT call disconnectParticipant — do that explicitly first if needed.
+     */
+    destroy(): Promise<void>;
 
     // ======
     // Events

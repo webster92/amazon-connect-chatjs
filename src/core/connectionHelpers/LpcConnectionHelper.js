@@ -68,6 +68,10 @@ class LpcConnectionHelper extends BaseConnectionHelper {
         this.tryCleanup();
     }
 
+    closeWebSocket() {
+        this.baseInstance.closeWebSocket();
+    }
+
     tryCleanup() {
         if (this.customerConnection && !this.baseInstance.hasMessageSubscribers()) {
             this.baseInstance.end();
@@ -219,11 +223,15 @@ class LpcConnectionHelperBase {
         csmService.addCountAndErrorMetric(WEBSOCKET_EVENTS.InitWebsocket, CSM_CATEGORY.API, isError);
     }
 
-    end() {
-    // WebSocketProvider instance from streams does not have closeWebSocket
+    closeWebSocket() {
         if (this.websocketManager.closeWebSocket) {
             this.websocketManager.closeWebSocket();
         }
+    }
+
+    end() {
+    // WebSocketProvider instance from streams does not have closeWebSocket
+        this.closeWebSocket();
         this.eventBus.unsubscribeAll();
         this.subscriptions.forEach(unsubscribe => unsubscribe());
         this.logger.info("Websocket closed. All event subscriptions are cleared.");

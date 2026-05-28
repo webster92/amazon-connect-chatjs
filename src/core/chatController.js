@@ -501,6 +501,17 @@ class ChatController {
             : Promise.resolve();
     }
 
+    closeWebSocket() {
+        if (this.connectionHelper) {
+            this.connectionHelper.closeWebSocket();
+        }
+    }
+
+    destroy() {
+        this.pubsub.unsubscribeAll();
+        return this.breakConnection();
+    }
+
     // Do any clean up that needs to be done upon the participant being disconnected from the chat -
     // disconnected here means that the participant is no longer part of ther chat.
     cleanUpOnParticipantDisconnect() {

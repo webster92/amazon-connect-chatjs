@@ -37,8 +37,8 @@ class PersistentConnectionAndChatServiceSessionFactory extends ChatSessionFactor
         this.argsValidator = new ChatServiceArgsValidator();
     }
 
-    createChatSession(sessionType, chatDetails, options, websocketManager) {
-        const chatController = this._createChatController(sessionType, chatDetails, options, websocketManager);
+    createChatSession(sessionType, chatDetails, options, websocketManager, customClient) {
+        const chatController = this._createChatController(sessionType, chatDetails, options, websocketManager, customClient);
         if (sessionType === SESSION_TYPES.AGENT) {
             return new AgentChatSession(chatController);
         } else if (sessionType === SESSION_TYPES.CUSTOMER) {
@@ -52,7 +52,7 @@ class PersistentConnectionAndChatServiceSessionFactory extends ChatSessionFactor
         }
     }
 
-    _createChatController(sessionType, chatDetailsInput, options, websocketManager) {
+    _createChatController(sessionType, chatDetailsInput, options, websocketManager, customClient) {
         try {
             var chatDetails = this.argsValidator.normalizeChatDetails(chatDetailsInput);
             var logMetaData = {
@@ -61,7 +61,7 @@ class PersistentConnectionAndChatServiceSessionFactory extends ChatSessionFactor
                 sessionType,
             };
 
-            var chatClient = ChatClientFactory.getCachedClient(options, logMetaData);
+            var chatClient = customClient || ChatClientFactory.getCachedClient(options, logMetaData);
 
             var args = {
                 sessionType: sessionType,
@@ -216,6 +216,14 @@ export class ChatSession {
         return this.controller.getChatDetails();
     }
 
+    closeWebSocket() {
+        return this.controller.closeWebSocket();
+    }
+
+    destroy() {
+        return this.controller.destroy();
+    }
+
     describeView(args) {
         return this.controller.describeView(args);
     }
@@ -315,6 +323,7 @@ var ChatSessionConstructor = args => {
         args.chatDetails,
         options,//options contain region
         args.websocketManager,
+        args.customClient,
     );
 };
 
