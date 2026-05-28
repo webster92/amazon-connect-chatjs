@@ -6,14 +6,9 @@ import {
     SESSION_TYPES,
     CONTENT_TYPE,
     CHAT_EVENT_TYPE_MAPPING,
-    CSM_CATEGORY,
     ACPS_METHODS,
     FEATURES,
-    CREATE_PARTICIPANT_CONACK_FAILURE,
-    CREATE_PARTICIPANT_CONACK_API_CALL_COUNT,
-    STREAM_JS,
     CHAT_SESSION_ERROR_TYPES,
-    STREAM_METRIC_ERROR_TYPES,
     TRANSCRIPT_ACTIONS,
     MESSAGE_RECEIPT_TYPE
 } from "../constants";
@@ -23,9 +18,7 @@ import { ChatServiceArgsValidator } from "./chatArgsValidator";
 import ConnectionDetailsProvider from "./connectionHelpers/connectionDetailsProvider";
 import LpcConnectionHelper from "./connectionHelpers/LpcConnectionHelper";
 import MessageReceiptsUtil from './MessageReceiptsUtil';
-import { csmService } from "../service/csmService";
 import { GlobalConfig } from "../globalConfig";
-import StreamMetricUtils from "../streamMetricUtils";
 import PartialMessageUtil from "./PartialMessageUtil";
 import InternalTranscriptUtils from "./internalTranscriptUtils";
 
@@ -84,8 +77,6 @@ class ChatController {
                     }
                 ]
                 : [];
-            csmService.addLatencyMetricWithStartTime(method, startTime, CSM_CATEGORY.API, contentTypeDimension);
-            csmService.addCountAndErrorMetric(method, CSM_CATEGORY.API, false, contentTypeDimension);
             // Only add metadata if method is not GetAttachementURL
             if (method !== ACPS_METHODS.GET_ATTACHMENT_URL) {
                 response.metadata = metadata;
@@ -104,8 +95,6 @@ class ChatController {
                     }
                 ]
                 : [];
-            csmService.addLatencyMetricWithStartTime(method, startTime, CSM_CATEGORY.API, contentTypeDimension);
-            csmService.addCountAndErrorMetric(method, CSM_CATEGORY.API, true, contentTypeDimension);
             error.metadata = metadata;
             return Promise.reject(error);
         };
@@ -144,32 +133,6 @@ class ChatController {
             .sendAttachment(connectionToken, args.attachment, args.metadata)
             .then(this.handleRequestSuccess(metadata, ACPS_METHODS.SEND_ATTACHMENT, startTime, args.attachment.type))
             .catch(this.handleRequestFailure(metadata, ACPS_METHODS.SEND_ATTACHMENT, startTime, args.attachment.type));
-    }
-
-    downloadAttachment(args){
-        if (!this._validateConnectionStatus('downloadAttachment')) {
-            return Promise.reject(`Failed to call downloadAttachment, No active connection`);
-        }
-        const startTime = new Date().getTime();
-        const metadata = args.metadata || null;
-        const connectionToken = this.connectionHelper.getConnectionToken();
-        return this.chatClient
-            .downloadAttachment(connectionToken, args.attachmentId)
-            .then(this.handleRequestSuccess(metadata, ACPS_METHODS.DOWNLOAD_ATTACHMENT, startTime))
-            .catch(this.handleRequestFailure(metadata, ACPS_METHODS.DOWNLOAD_ATTACHMENT, startTime));
-    }
-
-    getAttachmentURL(args){
-        if (!this._validateConnectionStatus('getAttachementURL')) {
-            return Promise.reject(`Failed to call getAttachmentURL, No active connection`);
-        }
-        const startTime = new Date().getTime();
-        const metadata = args.metadata || null;
-        const connectionToken = this.connectionHelper.getConnectionToken();
-        return this.chatClient
-            .getAttachmentURL(connectionToken, args.attachmentId)
-            .then(this.handleRequestSuccess(metadata, ACPS_METHODS.GET_ATTACHMENT_URL, startTime))
-            .catch(this.handleRequestFailure(metadata, ACPS_METHODS.GET_ATTACHMENT_URL, startTime));
     }
 
     sendEventIfChatHasNotEnded(...args) {
@@ -426,11 +389,6 @@ class ChatController {
                 });
                 this.breakConnection();
             }
-            if (incomingData.ContentType === CONTENT_TYPE.transferSucceeded && this.sessionType !== SESSION_TYPES.CUSTOMER) {
-                // calls LpcConnectionHelper to remove message subscriptions for agent and supervisor sessions in Agent transfer use case
-                // Customer SIM: https://t.corp.amazon.com/P149853425/communication
-                this.breakConnection();
-            }
         } catch (e) {
             this._sendInternalLogToServer(this.logger.error(
                 "Error occured while handling message from Connection. eventData:",
@@ -462,16 +420,6 @@ class ChatController {
         
         // TODO: Fix the floating promise issue: https://app.asana.com/0/1203611591691532/1203880194668408/f
         const connectionAcknowledged = connectionDetailsProvider.getConnectionDetails()?.connectionAcknowledged;
-        if (this._shouldAcknowledgeContact() && !connectionAcknowledged) {
-            csmService.addAgentCountMetric(CREATE_PARTICIPANT_CONACK_API_CALL_COUNT, 1);
-            connectionDetailsProvider.callCreateParticipantConnection({
-                Type: false,
-                ConnectParticipant: true
-            }).catch(err => {
-                this.logger.warn("ConnectParticipant failed to acknowledge Agent connection in CreateParticipantConnection: ", err);
-                csmService.addAgentCountMetric(CREATE_PARTICIPANT_CONACK_FAILURE, 1);
-            });
-        }
         this.logger.warn("onConnectionSuccess responseObject", responseObject);
         return responseObject;
     }
@@ -485,14 +433,7 @@ class ChatController {
         };
         this._sendInternalLogToServer(this.logger.error("Connect Failed. Error: ", errorObject));
 
-        const metricName = `${STREAM_JS}-${window.connect.version}-${CHAT_SESSION_ERROR_TYPES.CHATJS_CONNECT_SESSION_ERROR}`;
-        StreamMetricUtils.publishError(metricName, STREAM_METRIC_ERROR_TYPES.INTERNAL_SERVER_ERROR);
-
         return Promise.reject(errorObject);
-    }
-
-    _shouldAcknowledgeContact() {
-        return this.sessionType === SESSION_TYPES.AGENT;
     }
 
     breakConnection() {
@@ -518,14 +459,10 @@ class ChatController {
             .then(response => {
                 this._sendInternalLogToServer(this.logger.info("Disconnect participant successfully"));
 
-                csmService.addLatencyMetricWithStartTime(ACPS_METHODS.DISCONNECT_PARTICIPANT, startTime, CSM_CATEGORY.API);
-                csmService.addCountAndErrorMetric(ACPS_METHODS.DISCONNECT_PARTICIPANT, CSM_CATEGORY.API, false);
                 response = {...(response || {})};
                 return response;
             }, error => {
                 this._sendInternalLogToServer(this.logger.error("Disconnect participant failed. Error:", error));
-                csmService.addLatencyMetricWithStartTime(ACPS_METHODS.DISCONNECT_PARTICIPANT, startTime, CSM_CATEGORY.API);
-                csmService.addCountAndErrorMetric(ACPS_METHODS.DISCONNECT_PARTICIPANT, CSM_CATEGORY.API, true);
                 return Promise.reject(error);
             });
     }
@@ -539,37 +476,6 @@ class ChatController {
             connectionDetails: this.connectionDetails
         };
     }
-
-    describeView(args) {
-        const startTime = new Date().getTime();
-        const metadata = args.metadata || null;
-        const connectionToken = this.connectionHelper.getConnectionToken();
-        return this.chatClient
-            .describeView(args.viewToken, connectionToken)
-            .then(this.handleRequestSuccess(metadata, ACPS_METHODS.DESCRIBE_VIEW, startTime))
-            .catch(this.handleRequestFailure(metadata, ACPS_METHODS.DESCRIBE_VIEW, startTime));
-    }
-
-    getAuthenticationUrl(args) {
-        const startTime = new Date().getTime();
-        const metadata = args.metadata || null;
-        const connectionToken = this.connectionHelper.getConnectionToken();
-        return this.chatClient
-            .getAuthenticationUrl(connectionToken, args.redirectUri, args.sessionId)
-            .then(this.handleRequestSuccess(metadata, ACPS_METHODS.GET_AUTHENTICATION_URL, startTime))
-            .catch(this.handleRequestFailure(metadata, ACPS_METHODS.GET_AUTHENTICATION_URL, startTime));
-    }
-
-    cancelParticipantAuthentication(args) {
-        const startTime = new Date().getTime();
-        const metadata = args.metadata || null;
-        const connectionToken = this.connectionHelper.getConnectionToken();
-        return this.chatClient
-            .cancelParticipantAuthentication(connectionToken, args.sessionId)
-            .then(this.handleRequestSuccess(metadata, ACPS_METHODS.CANCEL_AUTHENTICATION, startTime))
-            .catch(this.handleRequestFailure(metadata, ACPS_METHODS.CANCEL_AUTHENTICATION, startTime));
-    }
-
 
     _convertConnectionHelperStatus(connectionHelperStatus) {
         switch (connectionHelperStatus) {

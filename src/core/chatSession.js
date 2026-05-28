@@ -4,13 +4,11 @@ import {
 } from "./exceptions";
 import { ChatClientFactory } from "../client/client";
 import { ChatServiceArgsValidator } from "./chatArgsValidator";
-import { SESSION_TYPES, CHAT_EVENTS, FEATURES, STREAM_JS, CHAT_SESSION_ERROR_TYPES, STREAM_METRIC_ERROR_TYPES, CHAT_SESSION_SUCCESS_TYPES } from "../constants";
+import { SESSION_TYPES, CHAT_EVENTS, FEATURES, CHAT_SESSION_ERROR_TYPES, CHAT_SESSION_SUCCESS_TYPES } from "../constants";
 import { GlobalConfig } from "../globalConfig";
 import { ChatController } from "./chatController";
 import { LogManager, LogLevel, Logger } from "../log";
-import { csmService } from "../service/csmService";
 import WebSocketManager from "../lib/amazon-connect-websocket-manager";
-import StreamMetricUtils from "../streamMetricUtils";
 
 const logger = LogManager.getLogger({ prefix: "ChatJS-GlobalConfig" });
 
@@ -39,17 +37,7 @@ class PersistentConnectionAndChatServiceSessionFactory extends ChatSessionFactor
 
     createChatSession(sessionType, chatDetails, options, websocketManager) {
         const chatController = this._createChatController(sessionType, chatDetails, options, websocketManager);
-        if (sessionType === SESSION_TYPES.AGENT) {
-            return new AgentChatSession(chatController);
-        } else if (sessionType === SESSION_TYPES.CUSTOMER) {
-            return new CustomerChatSession(chatController);
-        } else {
-            throw new IllegalArgumentException(
-                "Unkown value for session type, Allowed values are: " +
-          Object.values(SESSION_TYPES),
-                sessionType
-            );
-        }
+        return new CustomerChatSession(chatController);
     }
 
     _createChatController(sessionType, chatDetailsInput, options, websocketManager) {
@@ -71,13 +59,9 @@ class PersistentConnectionAndChatServiceSessionFactory extends ChatSessionFactor
                 logMetaData,
             };
 
-            StreamMetricUtils.publishEvent(`${STREAM_JS}-${window.connect.version}-${CHAT_SESSION_SUCCESS_TYPES.CHATJS_CONNECT_SESSION_SUCCESS}`);
-
             return new ChatController(args);
         }
         catch (err){
-            const metricName = `${STREAM_JS}-${window.connect.version}-${CHAT_SESSION_ERROR_TYPES.CHATJS_CREATE_SESSION_ERROR}`;
-            StreamMetricUtils.publishError(metricName, STREAM_METRIC_ERROR_TYPES.INTERNAL_SERVER_ERROR);
             logger.error("Error while creating chat session", err);
         }
     }
@@ -144,30 +128,6 @@ export class ChatSession {
         this.controller.subscribe(CHAT_EVENTS.DEEP_HEARTBEAT_FAILURE, callback);
     }
 
-    onAuthenticationInitiated(callback) {
-        this.controller.subscribe(CHAT_EVENTS.AUTHENTICATION_INITIATED, callback);
-    }
-
-    onAuthenticationSuccessful(callback) {
-        this.controller.subscribe(CHAT_EVENTS.AUTHENTICATION_SUCCESSFUL, callback);
-    }
-
-    onAuthenticationFailed(callback) {
-        this.controller.subscribe(CHAT_EVENTS.AUTHENTICATION_FAILED, callback);
-    }
-
-    onAuthenticationTimeout(callback) {
-        this.controller.subscribe(CHAT_EVENTS.AUTHENTICATION_TIMEOUT, callback);
-    }
-
-    onAuthenticationExpired(callback) {
-        this.controller.subscribe(CHAT_EVENTS.AUTHENTICATION_EXPIRED, callback);
-    }
-
-    onAuthenticationCanceled(callback) {
-        this.controller.subscribe(CHAT_EVENTS.AUTHENTICATION_CANCELED, callback);
-    }
-
     onParticipantDisplayNameUpdated(callback) {
         this.controller.subscribe(CHAT_EVENTS.PARTICIPANT_DISPLAY_NAME_UPDATED, callback);
     }
@@ -186,14 +146,6 @@ export class ChatSession {
 
     sendAttachment(args){
         return this.controller.sendAttachment(args);
-    }
-
-    downloadAttachment(args){
-        return this.controller.downloadAttachment(args);
-    }
-
-    getAttachmentURL(args){
-        return this.controller.getAttachmentURL(args);
     }
 
     connect(args) {
@@ -215,30 +167,7 @@ export class ChatSession {
     getChatDetails() {
         return this.controller.getChatDetails();
     }
-
-    describeView(args) {
-        return this.controller.describeView(args);
-    }
-
-    getAuthenticationUrl(args) {
-        return this.controller.getAuthenticationUrl(args);
-    }
-
-    cancelParticipantAuthentication(args) {
-        return this.controller.cancelParticipantAuthentication(args);
-    }
 }
-
-class AgentChatSession extends ChatSession {
-    constructor(controller) {
-        super(controller);
-    }
-
-    cleanUpOnParticipantDisconnect() {
-        return this.controller.cleanUpOnParticipantDisconnect();
-    }
-}
-
 class CustomerChatSession extends ChatSession {
     constructor(controller) {
         super(controller);
@@ -253,7 +182,6 @@ export const CHAT_SESSION_FACTORY = new PersistentConnectionAndChatServiceSessio
 
 var setGlobalConfig = config => {
     var loggerConfig = config.loggerConfig;
-    var csmConfig = config.csmConfig;
     GlobalConfig.update(config);
     /**
    * if config.loggerConfig.logger is present - use it in websocketManager
@@ -267,9 +195,6 @@ var setGlobalConfig = config => {
    */
     WebSocketManager.setGlobalConfig(config);
     LogManager.updateLoggerConfig(loggerConfig);
-    if (csmConfig) {
-        csmService.updateCsmConfig(csmConfig);
-    }
     /**
      * Handle setting message receipts feature in Global Config. If no values are given will default to:
      *   - Message receipts enabled
@@ -307,11 +232,8 @@ var ChatSessionConstructor = args => {
     GlobalConfig.updateStageRegionCell(options);
     // initialize CSM Service for only customer chat widget
     // Disable CSM service from canary test
-    if(!args.disableCSM && type === SESSION_TYPES.CUSTOMER) {
-        csmService.loadCsmScriptAndExecute();
-    }
+    
     return CHAT_SESSION_FACTORY.createChatSession(
-        type,
         args.chatDetails,
         options,//options contain region 
         args.websocketManager,
@@ -328,7 +250,6 @@ const ChatSessionObject = {
     LogLevel: LogLevel,
     Logger: Logger,
     SessionTypes: SESSION_TYPES,
-    csmService: csmService,
     setFeatureFlag: setFeatureFlag,
     setRegionOverride: setRegionOverride
 };
