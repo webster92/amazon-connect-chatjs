@@ -22,7 +22,7 @@ describe("client test cases", () => {
   const content = "content";
   const options = {};
   const logMetaData = {};
-  var chatClient = ChatClientFactory.getCachedClient(options, logMetaData);
+  var chatClient = ChatClientFactory.getClient(options, logMetaData);
 
   beforeEach(() => {
     jest.spyOn(chatClient, "_submitEvent").mockImplementation(() => {});
@@ -94,7 +94,7 @@ describe("client test cases", () => {
     });
     const options = {};
     const logMetaData = {};
-    var chatClient = ChatClientFactory.getCachedClient(options, logMetaData);
+    var chatClient = ChatClientFactory.getClient(options, logMetaData);
 
     describe("DescribeView", () => {
       test("No errors thrown in happy case", async () => {

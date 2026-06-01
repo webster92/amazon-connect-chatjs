@@ -38,6 +38,7 @@ class PersistentConnectionAndChatServiceSessionFactory extends ChatSessionFactor
     }
 
     createChatSession(sessionType, chatDetails, options, websocketManager, customClient) {
+        console.log("++++++ THIS IS THE FORK  - Create Chat Session ++++++");
         const chatController = this._createChatController(sessionType, chatDetails, options, websocketManager, customClient);
         if (sessionType === SESSION_TYPES.AGENT) {
             return new AgentChatSession(chatController);
@@ -61,7 +62,7 @@ class PersistentConnectionAndChatServiceSessionFactory extends ChatSessionFactor
                 sessionType,
             };
 
-            var chatClient = customClient || ChatClientFactory.getCachedClient(options, logMetaData);
+            var chatClient = ChatClientFactory.getClient(options, logMetaData, customClient);
 
             var args = {
                 sessionType: sessionType,
