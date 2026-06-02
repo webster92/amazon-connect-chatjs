@@ -24,8 +24,6 @@ import throttle from "lodash.throttle";
 import { CONTENT_TYPE, TYPING_VALIDITY_TIME } from '../constants';
 import packageJson from '../../package.json';
 
-console.log("++++++ THIS IS THE FORK ++++++");
-
 const DEFAULT_PREFIX = "Amazon-Connect-ChatJS-ChatClient";
 
 class ChatClientFactoryImpl {
@@ -174,7 +172,6 @@ class AWSChatClient extends ChatClient {
   }
 
   createParticipantConnection(participantToken, type, acknowledgeConnection) {
-    console.log("++++++ THIS IS THE FORK ++++++");
     let self = this;
     var params = {
       ParticipantToken: participantToken,
@@ -186,9 +183,6 @@ class AWSChatClient extends ChatClient {
     return self._sendRequest(command)
       .then((res) => {
         self.logger.info("Successfully create connection request")?.sendInternalLogToServer?.();
-        /* The above code is a JavaScript comment block. It does not contain any executable code. It is
-        used to provide information or explanations about the code for developers who may read it
-        later. */
         return res;
       })
       .catch((err) => {
